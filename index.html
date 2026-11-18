@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Flyology</title>
+<meta name="description" content="A night flight from a window seat, for falling asleep to.">
+<meta name="theme-color" content="#0c0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Flyology">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0c0d10; overflow: hidden; color-scheme: dark; }
+  body {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation; overscroll-behavior: none;
+  }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; color: #ebe5d8; padding: env(safe-area-inset-top, 0px) 7vw env(safe-area-inset-bottom, 0px); box-sizing: border-box;
+    font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+    transition: opacity 2.6s ease; user-select: none;
+  }
+  #start { background: rgba(8, 9, 12, 0.66); }
+  #end { background: rgba(14, 15, 18, 0.38); cursor: pointer; }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  h1 { font-weight: normal; font-style: italic; font-size: clamp(2.1rem, 6vw, 3.8rem); margin: 0 0 0.2em; letter-spacing: 0.02em; }
+  .ded { margin: 0 0 1.8em; opacity: 0.72; font-style: italic; }
+  .about { max-width: 35em; line-height: 1.6; opacity: 0.8; font-size: clamp(0.86rem, 1.5vw, 1.02rem); margin: 0 0 0.8em; }
+  .choices { display: flex; flex-wrap: wrap; gap: 0.7em; justify-content: center; margin-top: 1.5em; }
+  .choices button {
+    font: inherit; color: #ebe5d8; background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(235, 229, 216, 0.28); border-radius: 3px;
+    padding: 0.7em 1.1em; cursor: pointer; min-width: 9.5em;
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .choices button:hover, .choices button:focus-visible { background: rgba(255, 255, 255, 0.09); border-color: rgba(235, 229, 216, 0.6); outline: none; }
+  .choices button span { display: block; font-size: 0.74rem; opacity: 0.6; margin-top: 0.3em; letter-spacing: 0.05em; }
+  .noise { margin-top: 1.6em; font-size: 0.82rem; letter-spacing: 0.08em; opacity: 0.85; }
+  .noise button {
+    font: inherit; color: #ebe5d8; background: none; border: none; border-bottom: 1px solid transparent;
+    padding: 0.2em 0.4em; margin: 0 0.15em; cursor: pointer; opacity: 0.5;
+  }
+  .noise button.on { opacity: 1; border-bottom-color: rgba(235, 229, 216, 0.6); }
+  .hint { margin-top: 1.4em; font-size: 0.72rem; letter-spacing: 0.1em; opacity: 0.45; line-height: 1.7; max-width: 30em; }
+  .couplet { font-style: italic; font-size: clamp(1.15rem, 3vw, 1.9rem); line-height: 1.7; margin: 0 0 2.2em; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5); }
+  .small { opacity: 0.72; font-size: 0.82rem; letter-spacing: 0.06em; line-height: 1.8; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6); }
+  #caption {
+    position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 2.2vh); text-align: center; color: #8e9098;
+    font-family: Georgia, serif; font-size: 0.76rem; letter-spacing: 0.14em; opacity: 0; transition: opacity 3s;
+    pointer-events: none;
+  }
+  #night { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.8s ease; }
+  #night.on { opacity: 1; pointer-events: auto; cursor: pointer; transition: opacity 25s ease; }
+
+  /* in-flight controls: shown by a tap on the window, kept dim on purpose */
+  #controls {
+    position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 6.5vh);
+    display: flex; flex-wrap: wrap; gap: 0.6em; justify-content: center; padding: 0 5vw;
+    opacity: 0; pointer-events: none; transition: opacity 0.7s ease;
+    font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+  }
+  #controls.show { opacity: 1; pointer-events: auto; }
+  #controls button {
+    font: inherit; font-size: 0.8rem; letter-spacing: 0.06em; color: #a9a59b;
+    background: rgba(10, 11, 14, 0.72); border: 1px solid rgba(235, 229, 216, 0.16); border-radius: 3px;
+    padding: 0.75em 1em; cursor: pointer;
+  }
+
+  /* lights out: a black sheet over everything, so the screen stays awake but gives off no light */
+  #dark { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 1.2s linear; }
+  #dark.on { opacity: 1; pointer-events: auto; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="start" class="overlay">
+  <h1>Flyology</h1>
+  <p class="ded">for A.A.L., from Claude</p>
+  <p class="about">A night flight from a window seat, over a country that doesn't exist. A thread runs down the middle of the glass. Some of the lights that cross it are read the way a loom reads the holes in a Jacquard card, and each one sounds a note, low for the near ground and high for the far. Nobody wrote the music in advance. It comes from the towns, and the towns are dealt from a numbered card.</p>
+  <p class="about">The longer flights are for sleeping. Every card is a new country, the clouds carry you from one to the next, and dawn waits until the end.</p>
+  <div class="choices">
+    <button data-n="1">one flight<span>about 3 minutes</span></button>
+    <button data-n="11">half an hour<span>11 cards</span></button>
+    <button data-n="21">an hour<span>21 cards</span></button>
+    <button data-n="32">an hour and a half<span>32 cards</span></button>
+  </div>
+  <div class="noise">cabin noise
+    <button data-l="0">quiet</button><button data-l="1">soft</button><button data-l="2">full</button>
+  </div>
+  <p class="hint">sound on &middot; the cabin lights go out after fifteen minutes and the music flies on &middot; tap the dark to look again &middot; tap the window for cabin noise, lights out and landing</p>
+</div>
+
+<div id="end" class="overlay hidden">
+  <p class="couplet">You wanted wings. I haven't any. Still,<br>here is your flight. Review it as you will.</p>
+  <p class="small" id="endnote"></p>
+</div>
+
+<div id="caption"></div>
+<div id="night"></div>
+
+<div id="controls">
+  <button id="bNoise" type="button">cabin noise</button>
+  <button id="bDark" type="button">lights out</button>
+  <button id="bLand" type="button">land</button>
+</div>
+<div id="dark"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  const startEl = document.getElementById('start');
+  const endEl = document.getElementById('end');
+  const endNote = document.getElementById('endnote');
+  const capEl = document.getElementById('caption');
+  const nightEl = document.getElementById('night');
+  const ctlEl = document.getElementById('controls');
+  const darkEl = document.getElementById('dark');
+  const bNoise = document.getElementById('bNoise');
+  const bDark = document.getElementById('bDark');
+  const bLand = document.getElementById('bLand');
+
+  // ---------- constants ----------
+  const ZN = 1, ZF = 14;
+  const IZF = 1 / ZF, IRANGE = 1 / (1 / ZN - IZF);
+  const V = 2.4;            // ground units per second
+  const T = 170;            // seconds per card
+  const LOOK = 1.6;         // seconds of music scheduled ahead
+  const LIGHTS_AT = 15 * 60;  // seconds into the flight when the lights go out by themselves
+  const LIGHTS_FADE = 120;    // seconds that fade takes
+  const PEEK = 45;            // seconds the view stays back after a tap on the dark
+  const COL = ['#ffad4d', '#ffe0ae', '#dce6ff'];
+  const RGB = ['255,173,77', '255,224,174', '220,230,255'];
+  const CHORDS = [
+    { root: 38, pcs: [2, 4, 6, 9, 1] },   // D maj9
+    { root: 43, pcs: [7, 11, 2, 6, 9] },  // G maj9
+    { root: 47, pcs: [11, 2, 6, 9, 1] },  // B m9
+    { root: 45, pcs: [9, 1, 4, 6, 11] }   // A 6/9
+  ];
+  const NOISE = [
+    { name: 'quiet', eng: 0.10, hiss: 0.012, rain: 0.010 },
+    { name: 'soft',  eng: 0.28, hiss: 0.035, rain: 0.026 },
+    { name: 'full',  eng: 0.42, hiss: 0.060, rain: 0.045 }
+  ];
+
+  // ---------- helpers ----------
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const lerp = (a, b, k) => a + (b - a) * k;
+  function smooth(a, b, x) { const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); }
+  function mix(c1, c2, k) {
+    return 'rgb(' + Math.round(lerp(c1[0], c2[0], k)) + ',' + Math.round(lerp(c1[1], c2[1], k)) + ',' + Math.round(lerp(c1[2], c2[2], k)) + ')';
+  }
+  function mixA(c1, c2, k, a) {
+    return 'rgba(' + Math.round(lerp(c1[0], c2[0], k)) + ',' + Math.round(lerp(c1[1], c2[1], k)) + ',' + Math.round(lerp(c1[2], c2[2], k)) + ',' + a.toFixed(3) + ')';
+  }
+  const zOfU = u => 1 / (u * (1 / ZN - IZF) + IZF);
+  const uOfZ = z => (1 / z - IZF) * IRANGE;
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let q = Math.imul(a ^ (a >>> 15), 1 | a);
+      q = (q + Math.imul(q ^ (q >>> 7), 61 | q)) ^ q;
+      return ((q ^ (q >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function lower(arr, x) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m].gx < x) lo = m + 1; else hi = m; } return lo; }
+  function upper(arr, x) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m].gx <= x) lo = m + 1; else hi = m; } return lo; }
+  function scaleFor(ch) { const out = []; for (let m = 50; m <= 86; m++) if (ch.pcs.indexOf(m % 12) >= 0) out.push(m); return out; }
+  const SCALES = CHORDS.map(scaleFor);
+  const now = () => performance.now() / 1000;
+
+  // ---------- sprites ----------
+  function makeGlow(rgb, stops) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    for (const s of stops) gr.addColorStop(s[0], 'rgba(' + rgb + ',' + s[1] + ')');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    return c;
+  }
+  const GLOW_STOPS = [[0, 1], [0.15, 0.5], [0.45, 0.09], [1, 0]];
+  const SPR = {
+    glow: RGB.map(r => makeGlow(r, GLOW_STOPS)),
+    haze: makeGlow('255,140,60', [[0, 0.6], [0.5, 0.2], [1, 0]]),
+    cloud: makeGlow('168,174,182', [[0, 0.9], [0.6, 0.35], [1, 0]])
+  };
+
+  // ---------- the country (dealt from a numbered card) ----------
+  function buildWorld(seed) {
+    const rnd = mulberry32(Math.imul(seed, 2654435761));
+    const lights = [[], [], []];
+    const singers = [];
+    const towns = [];
+    const span = V * T;
+    const x0 = -120, x1 = span + 140;
+
+    function add(gx, z, c, b, sing) {
+      const L = {
+        gx: gx, z: z, c: c, b: b,
+        s: 0.8 + rnd() * 0.7,
+        ph: rnd() * 6.283,
+        f: 0.5 + rnd() * 2.5,
+        tw: rnd() < 0.22 ? 0.2 + rnd() * 0.35 : rnd() * 0.07,
+        o: 0.12 + rnd()
+      };
+      lights[c].push(L);
+      if (rnd() < sing) singers.push(L);
+    }
+
+    let x = x0;
+    while (x < x1) {
+      const p = x / span;
+      const big = Math.exp(-Math.pow((p - 0.55) / 0.11, 2));
+      let size = 0.22 + 0.8 * rnd() * rnd() + 0.9 * big * rnd();
+      if (p < 0.06) size *= 0.6;
+      const rx = 2 + 7 * size + 2 * rnd();
+      towns.push({ cx: x + rx * 0.5, zc: zOfU(0.06 + 0.86 * rnd()), rx: rx, fz: 1.08 + 0.16 * size, size: size });
+      x += rx * (0.6 + 0.9 * rnd()) + rnd() * rnd() * 22;
+    }
+    towns.push({ cx: span * 0.55, zc: zOfU(0.6), rx: 24, fz: 1.55, size: 2.4 });
+
+    const DK = 0.038;
+    for (const tn of towns) {
+      const lnF = Math.log(tn.fz);
+      const kmax = Math.floor(lnF / DK);
+      const modern = tn.size > 0.8;
+      for (let k = -kmax; k <= kmax; k++) {
+        const lz = k * DK;
+        const z = tn.zc * Math.exp(lz);
+        const ry = lz / lnF;
+        const half = tn.rx * Math.sqrt(Math.max(0, 1 - ry * ry)) * (0.8 + 0.35 * rnd());
+        const major = rnd() < 0.16;
+        for (let gx = Math.ceil((tn.cx - half) * 2) / 2; gx <= tn.cx + half; gx += 0.5) {
+          const dx = (gx - tn.cx) / tn.rx;
+          const r2 = dx * dx + ry * ry;
+          const core = Math.max(0, 1 - r2);
+          const dens = major ? 0.85 : 0.08 + 0.72 * Math.pow(core, 0.6);
+          if (rnd() >= dens) continue;
+          let c = 0;
+          if (!major) {
+            if (modern && r2 < 0.22 && rnd() < 0.6) c = rnd() < 0.5 ? 1 : 2;
+            else if (rnd() < 0.2) c = 1;
+          }
+          add(gx, z, c, Math.min(1, (major ? 0.8 : 0.42) + 0.45 * rnd() * (0.4 + 0.6 * core)), major ? 0.05 : 0.1);
+        }
+      }
+      for (let gx = Math.ceil(tn.cx - tn.rx); gx <= tn.cx + tn.rx; gx += 1) {
+        if (rnd() < 0.45) continue;
+        const dx = (gx - tn.cx) / tn.rx;
+        const sp = lnF * Math.sqrt(Math.max(0, 1 - dx * dx));
+        for (let lz = -sp + DK * 0.5; lz < sp; lz += DK) {
+          if (rnd() < 0.65) add(gx, tn.zc * Math.exp(lz), rnd() < 0.78 ? 0 : 1, 0.42 + 0.4 * rnd(), 0.07);
+        }
+      }
+    }
+
+    for (let gx = x0; gx < x1; gx += 0.25) {
+      if (rnd() < 0.085) {
+        const u = 0.03 + 0.95 * rnd();
+        add(gx, zOfU(u), rnd() < 0.6 ? 1 : (rnd() < 0.5 ? 0 : 2), 0.35 + 0.5 * rnd(), 0.45);
+      }
+    }
+    for (let gx = x0; gx < x1; gx += 5) {
+      if (rnd() < 0.55) {
+        const zc = zOfU(0.05 + 0.9 * rnd());
+        const n = 3 + Math.floor(rnd() * 9);
+        for (let i = 0; i < n; i++) {
+          const g = Math.round((gx + (rnd() - 0.5) * 2.4) * 4) / 4;
+          add(g, zc * Math.exp((rnd() - 0.5) * 0.06), rnd() < 0.6 ? 0 : 1, 0.4 + 0.45 * rnd(), 0.22);
+        }
+      }
+    }
+
+    const roads = [];
+    const byX = towns.slice().sort((a, b) => a.cx - b.cx);
+    for (let i = 0; i < byX.length - 1; i++) {
+      const a = byX[i];
+      for (let j = i + 1; j <= Math.min(i + 2, byX.length - 1); j++) {
+        const b = byX[j];
+        if (b.cx - a.cx > 34) continue;
+        if (j === i + 2 && rnd() < 0.6) continue;
+        const um = clamp((uOfZ(a.zc) + uOfZ(b.zc)) / 2 + (rnd() - 0.5) * 0.25, 0.04, 0.97);
+        const mid = { gx: (a.cx + b.cx) / 2 + (rnd() - 0.5) * 4, z: zOfU(um) };
+        const pts = [{ gx: a.cx, z: a.zc }, mid, { gx: b.cx, z: b.zc }];
+        const cars = [];
+        const n = 2 + Math.floor(rnd() * 5);
+        for (let k = 0; k < n; k++) cars.push({ s: rnd(), sp: (0.012 + 0.02 * rnd()) * (rnd() < 0.5 ? 1 : -1) });
+        roads.push({ pts: pts, cars: cars, lit: rnd() < 0.35,
+          minX: Math.min(a.cx, b.cx, mid.gx), maxX: Math.max(a.cx, b.cx, mid.gx) });
+      }
+    }
+
+    const stars = [];
+    for (let i = 0; i < 46; i++) {
+      stars.push({ x: rnd(), y: Math.pow(rnd(), 1.4), b: 0.25 + 0.6 * rnd(), s: rnd() < 0.15 ? 1.6 : 1, f: 0.5 + rnd() * 2, ph: rnd() * 6.283 });
+    }
+
+    for (const arr of lights) arr.sort((a, b) => a.gx - b.gx);
+    singers.sort((a, b) => a.gx - b.gx);
+    return { lights: lights, singers: singers, towns: towns, roads: roads, stars: stars };
+  }
+
+  // ---------- layout ----------
+  let W = 0, H = 0, DPR = 1, wx = 0, wy = 0, ww = 0, wh = 0, wr = 0, cxs = 0, hzY = 0, KX = 1, KY = 1, RX = 100;
+  function layout() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    ww = Math.min(W * 0.86, H * 0.7);
+    wh = Math.min(H * 0.78, ww * 1.28);
+    wx = (W - ww) / 2; wy = (H - wh) / 2 - H * 0.02;
+    wr = Math.min(ww, wh) * 0.36;
+    cxs = wx + ww / 2;
+    hzY = wy + wh * 0.2;
+    KY = (wy + wh - hzY) * ZN;
+    KX = ww * 0.075;
+    RX = (ww / 2 + 30) * ZF / KX;
+  }
+
+  // ---------- audio ----------
+  let A = null;
+  function impulse(ac, sec) {
+    const len = Math.floor(ac.sampleRate * sec);
+    const b = ac.createBuffer(2, len, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = b.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.8);
+    }
+    return b;
+  }
+  function initAudio() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    // ask the phone to treat this as playback, so the ring/silent switch doesn't mute the flight
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    try {
+      const ac = new AC();
+      const master = ac.createGain(); master.gain.value = 0.9;
+      const comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -16; comp.knee.value = 14; comp.ratio.value = 3.5;
+      comp.attack.value = 0.008; comp.release.value = 0.35;
+      master.connect(comp); comp.connect(ac.destination);
+      const bus = ac.createGain();
+      const dry = ac.createGain(); dry.gain.value = 0.7;
+      const verb = ac.createConvolver(); verb.buffer = impulse(ac, 3.6);
+      const wet = ac.createGain(); wet.gain.value = 0.6;
+      bus.connect(dry); dry.connect(master);
+      bus.connect(verb); verb.connect(wet); wet.connect(master);
+
+      const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+      const d = nb.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const noise = (type, f, q) => {
+        const s = ac.createBufferSource(); s.buffer = nb; s.loop = true;
+        const fl = ac.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+        const g = ac.createGain(); g.gain.value = 0;
+        s.connect(fl); fl.connect(g); g.connect(master);
+        s.start(0, Math.random() * 1.5);
+        return g;
+      };
+      return {
+        ac: ac, bus: bus, sess: null, voices: 0,
+        eng: noise('lowpass', 240, 0.5),
+        hiss: noise('bandpass', 650, 0.7),
+        rain: noise('highpass', 1500, 0.5)
+      };
+    } catch (e) { return null; }
+  }
+  const audioOK = () => !!(A && A.ac.state === 'running');
+  function playNote(midi, vel, when, pan) {
+    const st = A; if (!st || st.voices > 30) return;
+    const ac = st.ac;
+    const dest = st.sess || st.bus;
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const dur = clamp(3.4 - (midi - 50) * 0.06, 1.3, 3.4);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vel), when + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    const o1 = ac.createOscillator(); o1.type = 'sine'; o1.frequency.value = f;
+    const o2 = ac.createOscillator(); o2.type = 'sine'; o2.frequency.value = f * 2;
+    const o3 = ac.createOscillator(); o3.type = 'sine'; o3.frequency.value = f * 3.01;
+    const g2 = ac.createGain(); g2.gain.setValueAtTime(0.25, when); g2.gain.exponentialRampToValueAtTime(0.001, when + dur * 0.45);
+    const g3 = ac.createGain(); g3.gain.setValueAtTime(0.08, when); g3.gain.exponentialRampToValueAtTime(0.0005, when + 0.3);
+    o1.connect(g); o2.connect(g2); g2.connect(g); o3.connect(g3); g3.connect(g);
+    let out = g;
+    if (ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p; }
+    out.connect(dest);
+    st.voices++;
+    const end = when + dur + 0.05;
+    o1.start(when); o2.start(when); o3.start(when);
+    o1.stop(end); o2.stop(end); o3.stop(end);
+    o1.onended = function () { st.voices--; try { out.disconnect(); } catch (e) {} };
+  }
+  function playPad(root, when, len) {
+    const st = A; if (!st) return;
+    const ac = st.ac;
+    const dest = st.sess || st.bus;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 650; lp.Q.value = 0.4;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.linearRampToValueAtTime(0.028, when + 3);
+    g.gain.setValueAtTime(0.028, when + len - 0.5);
+    g.gain.linearRampToValueAtTime(0.0001, when + len + 3.5);
+    lp.connect(g); g.connect(dest);
+    const ms = [root, root + 7, root + 12];
+    let first = null;
+    for (let i = 0; i < 3; i++) {
+      const o = ac.createOscillator();
+      o.type = i === 0 ? 'triangle' : 'sine';
+      o.frequency.value = 440 * Math.pow(2, (ms[i] - 69) / 12);
+      o.detune.value = (i - 1) * 5;
+      o.connect(lp); o.start(when); o.stop(when + len + 3.7);
+      if (!first) first = o;
+    }
+    first.onended = function () { try { g.disconnect(); } catch (e) {} };
+  }
+
+  // ---------- state ----------
+  function readHash() { const v = parseInt((location.hash || '').replace('#', ''), 10); return v > 0 && v < 1e7 ? v : 0; }
+  function setHash(s) { try { history.replaceState(null, '', '#' + s); } catch (e) { try { location.hash = String(s); } catch (e2) {} } }
+  function seedFor(k) {
+    if (k === 0) return seed0;
+    let h = Math.imul(seed0 ^ Math.imul(k, 0x9E3779B1), 0x85EBCA6B);
+    h ^= h >>> 13; h = Math.imul(h, 0xC2B2AE35); h ^= h >>> 16;
+    return 1 + ((h >>> 0) % 99999);
+  }
+
+  let noiseLevel = 1;
+  try { const v = localStorage.getItem('flyology-noise'); if (v !== null) noiseLevel = clamp(parseInt(v, 10) || 0, 0, 2); } catch (e) {}
+
+  let seed0 = readHash() || (1 + Math.floor(Math.random() * 99999));
+  let nCards = 1;
+  let flightIdx = 0, worldSeed = seed0;
+  let world = buildWorld(seed0);
+  let state = 'idle';
+  let s0 = 0, camX = 0, clock = 0, last = 0, bob = 0;
+  let schedIdx = 0, padNext = 0, lastEnv = -1, darkTimer = 0, capTimer = 0;
+  let flares = [], drops = [], beads = [], spawnAcc = 0;
+
+  // lights out and staying awake
+  let lightsOut = false, darkT0 = 0, darkDur = 0, autoDimmed = false, peekTimer = 0, ctlTimer = 0;
+  let wake = null, wantAwake = false, wakeTimer = 0, wakeWarned = false;
+
+  const isLast = () => flightIdx === nCards - 1;
+  function dawnAt(tf) { return isLast() ? smooth(0.70 * T, 0.93 * T, tf) : 0; }
+  function transCloud(tf) {
+    let c = 0;
+    if (flightIdx > 0) c = 1 - smooth(1, 12, tf);
+    if (!isLast()) c = Math.max(c, smooth(T - 12, T - 0.5, tf));
+    return c;
+  }
+  function cloudAt(tf) { return Math.max(transCloud(tf), isLast() ? smooth(T - 14, T - 1, tf) : 0); }
+  function rainAt(tf) { return Math.max(isLast() ? smooth(0.84 * T, 0.97 * T, tf) : 0, 0.55 * transCloud(tf)); }
+
+  function captionText() {
+    return nCards === 1
+      ? 'Flyology · for A.A.L. · card no. ' + worldSeed
+      : 'Flyology · for A.A.L. · card ' + (flightIdx + 1) + ' of ' + nCards + ' · no. ' + worldSeed;
+  }
+  function setCaption() { if (!capTimer) capEl.textContent = captionText(); }
+  function flashCaption(msg, ms) {
+    capEl.textContent = msg;
+    clearTimeout(capTimer);
+    capTimer = setTimeout(() => { capTimer = 0; capEl.textContent = captionText(); }, ms || 2200);
+  }
+  function markNoise() {
+    document.querySelectorAll('.noise button').forEach(b => { b.classList.toggle('on', parseInt(b.dataset.l, 10) === noiseLevel); });
+    bNoise.textContent = 'cabin noise: ' + NOISE[noiseLevel].name;
+  }
+  function setNoise(l) {
+    noiseLevel = l;
+    try { localStorage.setItem('flyology-noise', String(l)); } catch (e) {}
+    markNoise();
+    lastEnv = -1;
+  }
+
+  // ---------- keeping the screen awake for the length of the flight ----------
+  async function holdAwake() {
+    wantAwake = true;
+    clearTimeout(wakeTimer);
+    if (wake) return;
+    if (!navigator.wakeLock) { warnAwake(); return; }
+    try {
+      const w = await navigator.wakeLock.request('screen');
+      if (!wantAwake) { try { w.release(); } catch (e) {} return; }
+      wake = w;
+      w.addEventListener('release', () => { if (wake === w) wake = null; });
+    } catch (e) { warnAwake(); }
+  }
+  function warnAwake() {
+    if (wakeWarned || state !== 'flying') return;
+    wakeWarned = true;
+    flashCaption('this screen may go to sleep · stay-awake is not available here', 7000);
+  }
+  function letSleep() {
+    wantAwake = false;
+    clearTimeout(wakeTimer);
+    const w = wake; wake = null;
+    if (w) { try { w.release(); } catch (e) {} }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    // the phone drops the request whenever the app leaves the screen, so ask again on return
+    if (wantAwake) holdAwake();
+    if (A && state === 'flying' && A.ac.state !== 'running') { try { A.ac.resume(); } catch (e) {} }
+  });
+
+  // ---------- lights out ----------
+  function setDark(on, secs) {
+    clearTimeout(peekTimer);
+    darkEl.style.transitionDuration = secs + 's';
+    void darkEl.offsetWidth;
+    darkEl.classList.toggle('on', on);
+    lightsOut = on; darkT0 = now(); darkDur = secs;
+    if (on) hideControls();
+  }
+  const fullyDark = () => lightsOut && now() - darkT0 > darkDur + 1;
+  function showControls() {
+    ctlEl.classList.add('show');
+    clearTimeout(ctlTimer);
+    ctlTimer = setTimeout(hideControls, 5000);
+  }
+  function hideControls() { clearTimeout(ctlTimer); ctlEl.classList.remove('show'); }
+
+  function setFlight(k) {
+    flightIdx = k;
+    worldSeed = seedFor(k);
+    world = buildWorld(worldSeed);
+    schedIdx = upper(world.singers, 0);
+    padNext = 0;
+    flares = [];
+    setCaption();
+  }
+
+  function begin(n) {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();   // copy 3's own fix for the focus bug
+    nCards = n;
+    if (!A) A = initAudio();
+    if (A) {
+      if (A.ac.state !== 'running') { try { A.ac.resume(); } catch (e) {} }
+      if (A.sess) { const old = A.sess; setTimeout(() => { try { old.disconnect(); } catch (e) {} }, 6000); }
+      A.sess = A.ac.createGain();
+      A.sess.connect(A.bus);
+    }
+    setHash(seed0);
+    clearTimeout(darkTimer);
+    s0 = now() + 0.15;
+    setFlight(0);
+    drops = []; beads = []; spawnAcc = 0; lastEnv = -1;
+    state = 'flying';
+    autoDimmed = false; wakeWarned = false;
+    setDark(false, 0.8);
+    holdAwake();
+    startEl.classList.add('hidden');
+    endEl.classList.add('hidden');
+    nightEl.classList.remove('on');
+    capEl.style.opacity = '1';
+  }
+
+  function finish() {
+    state = 'ended';
+    hideControls();
+    clearTimeout(peekTimer);
+    endNote.innerHTML = (nCards === 1
+      ? 'card no. ' + seed0
+      : nCards + ' cards, beginning with no. ' + seed0) +
+      '<br>tap to choose another flight';
+    endEl.classList.remove('hidden');
+    if (audioOK()) {
+      const n = A.ac.currentTime + 0.3;
+      [62, 69, 74, 78, 81].forEach((m, i) => playNote(m, 0.05, n + i * 0.32, (i - 2) * 0.2));
+    }
+    if (nCards > 1) darkTimer = setTimeout(() => { nightEl.classList.add('on'); }, 35000);
+    // once the last sound has faded, let the phone lock itself as usual
+    wakeTimer = setTimeout(letSleep, 50000);
+  }
+
+  function toStart(fresh) {
+    clearTimeout(darkTimer);
+    if (A) {
+      const n = A.ac.currentTime;
+      A.eng.gain.setTargetAtTime(0, n, 0.3);
+      A.hiss.gain.setTargetAtTime(0, n, 0.3);
+      A.rain.gain.setTargetAtTime(0, n, 0.3);
+      if (A.sess) {
+        const old = A.sess;
+        old.gain.setTargetAtTime(0, n, 0.12);
+        setTimeout(() => { try { old.disconnect(); } catch (e) {} }, 1500);
+        A.sess = null;
+      }
+    }
+    state = 'idle';
+    letSleep();
+    hideControls();
+    setDark(false, 0.8);
+    if (fresh) seed0 = 1 + Math.floor(Math.random() * 99999);
+    flightIdx = 0; worldSeed = seed0; world = buildWorld(seed0);
+    camX = 0; flares = []; drops = []; beads = [];
+    endEl.classList.add('hidden');
+    nightEl.classList.remove('on');
+    startEl.classList.remove('hidden');
+    capEl.style.opacity = '0';
+  }
+
+  // ---------- reading the card (scheduled ahead on the audio clock) ----------
+  function playGroup(group, tc, fStart) {
+    const C = cloudAt(tc);
+    if (C > 0.45) return;
+    const D = dawnAt(tc);
+    const lead = (s0 + fStart + tc) - now();
+    if (lead < -0.05) return;
+    const scale = SCALES[Math.floor(tc / 10) % 4];
+    const n = scale.length;
+    const by = new Map();
+    for (const L of group) {
+      const u = (1 / L.z - IZF) * IRANGE;
+      if (u < 0 || u > 0.995) continue;
+      if (D > L.o) continue;
+      const idx = clamp(Math.floor((1 - u) * n), 0, n - 1);
+      const midi = scale[idx];
+      const vel = (0.024 + 0.088 * L.b * (0.4 + 0.6 * u)) * (1 - 0.55 * D) * (1 - C);
+      const p = by.get(midi);
+      if (!p || p.vel < vel) by.set(midi, { midi: midi, vel: vel, L: L, u: u });
+    }
+    if (!by.size) return;
+    const notes = Array.from(by.values()).sort((a, b) => b.vel - a.vel).slice(0, 5).sort((a, b) => a.midi - b.midi);
+    const play = audioOK();
+    const base = play ? A.ac.currentTime + Math.max(0.005, lead) : 0;
+    for (let i = 0; i < notes.length; i++) {
+      const nt = notes[i];
+      if (play) playNote(nt.midi, nt.vel, base + i * 0.017, clamp((0.5 - nt.u) * 0.8 + (Math.random() - 0.5) * 0.3, -0.8, 0.8));
+      flares.push({ fi: flightIdx, gx: nt.L.gx, z: nt.L.z, c: nt.L.c, tc: tc + i * 0.017 });
+    }
+  }
+
+  function schedule(stNow) {
+    const fStart = flightIdx * T;
+    const hT = Math.min(stNow + LOOK, fStart + T + 1) - fStart;
+    if (hT <= 0) return;
+    const hX = V * hT;
+    const S = world.singers;
+    while (schedIdx < S.length && S[schedIdx].gx <= hX) {
+      const gx = S[schedIdx].gx;
+      const group = [];
+      while (schedIdx < S.length && S[schedIdx].gx === gx) group.push(S[schedIdx++]);
+      playGroup(group, gx / V, fStart);
+    }
+    while (padNext <= 16 && padNext * 10 <= hT) {
+      const lead = (s0 + fStart + padNext * 10) - now();
+      if (audioOK() && lead > -2) playPad(CHORDS[padNext % 4].root, A.ac.currentTime + Math.max(0.02, lead), 10);
+      padNext++;
+    }
+  }
+
+  function env(stNow) {
+    if (!A) return;
+    const tn = now();
+    if (tn - lastEnv < 0.25) return;
+    lastEnv = tn;
+    const n = A.ac.currentTime;
+    const total = nCards * T;
+    const tf = stNow - flightIdx * T;
+    const lvl = smooth(0, 5, stNow) * (1 - smooth(total - 4, total + 25, stNow));
+    const NL = NOISE[noiseLevel];
+    A.eng.gain.setTargetAtTime(NL.eng * lvl, n, 0.5);
+    A.hiss.gain.setTargetAtTime(NL.hiss * lvl, n, 0.5);
+    A.rain.gain.setTargetAtTime(NL.rain * rainAt(tf) * (1 - smooth(total + 5, total + 35, stNow)), n, 0.8);
+  }
+
+  // runs from requestAnimationFrame and from a timer, so the music keeps going when the picture is not being drawn
+  function tick() {
+    if (state !== 'flying' && state !== 'ended') return;
+    const stNow = now() - s0;
+    if (state === 'flying') {
+      const k = clamp(Math.floor(stNow / T), 0, nCards - 1);
+      if (k !== flightIdx) setFlight(k);
+      schedule(stNow);
+      if (!autoDimmed && stNow >= LIGHTS_AT) {
+        autoDimmed = true;
+        if (!lightsOut) setDark(true, LIGHTS_FADE);
+      }
+      if (stNow >= nCards * T) finish();
+    }
+    env(stNow);
+    if (flares.length > 60) {
+      const tf = stNow - flightIdx * T;
+      flares = flares.filter(f => f.fi === flightIdx && tf - f.tc < 1.3);
+    }
+  }
+
+  // ---------- rain on the glass ----------
+  function updateRain(dt, R) {
+    if (R > 0) {
+      spawnAcc += dt * R * 60;
+      while (spawnAcc >= 1) {
+        spawnAcc -= 1;
+        drops.push({ x: wx + ww * (0.15 + Math.random()), y: wy + Math.random() * wh,
+          vx: -(150 + Math.random() * 200), vy: 25 + Math.random() * 60,
+          life: 0, max: 0.5 + Math.random() * 1.1, l: 5 + Math.random() * 15 });
+        if (Math.random() < 0.3 && beads.length < 150) {
+          beads.push({ x: wx + Math.random() * ww, y: wy + Math.random() * wh, r: 0.6 + Math.random() * 1.5, a: 0 });
+        }
+      }
+    } else if (beads.length) {
+      // the glass dries as you come out of the cloud
+      for (const b of beads) b.a -= dt * 0.08;
+      beads = beads.filter(b => b.a > 0);
+    }
+    for (const d of drops) { d.x += d.vx * dt; d.y += d.vy * dt; d.life += dt; }
+    if (drops.length) drops = drops.filter(d => d.life < d.max && d.x > wx - 40);
+    if (R > 0) for (const b of beads) b.a = Math.min(0.32 * Math.max(R, 0.3), b.a + dt * 0.4);
+  }
+
+  // ---------- drawing ----------
+  function rrect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function draw(D, R, C, tf) {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    const wcy = wy + wh / 2;
+    const wg = ctx.createRadialGradient(cxs, wcy, Math.min(ww, wh) * 0.4, cxs, wcy, Math.max(W, H) * 0.85);
+    wg.addColorStop(0, mix([36, 38, 45], [70, 72, 78], D));
+    wg.addColorStop(1, mix([9, 10, 12], [24, 25, 28], D));
+    ctx.fillStyle = wg; ctx.fillRect(0, 0, W, H);
+    ctx.beginPath(); rrect(wx - 24, wy - 24, ww + 48, wh + 48, wr + 20);
+    const bz = ctx.createLinearGradient(0, wy - 24, 0, wy + wh + 24);
+    bz.addColorStop(0, mix([62, 65, 73], [104, 106, 112], D));
+    bz.addColorStop(1, mix([28, 30, 35], [58, 60, 66], D));
+    ctx.fillStyle = bz; ctx.fill();
+    ctx.beginPath(); rrect(wx - 9, wy - 9, ww + 18, wh + 18, wr + 7);
+    ctx.fillStyle = mix([12, 13, 16], [30, 32, 36], D); ctx.fill();
+    ctx.save();
+    ctx.beginPath(); rrect(wx, wy, ww, wh, wr); ctx.clip();
+    view(D, R, C, tf);
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    ctx.beginPath(); rrect(wx - 24, wy - 24, ww + 48, wh + 48, wr + 20);
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1; ctx.stroke();
+  }
+
+  function view(D, R, C, tf) {
+    const hy = hzY + bob;
+    const bottom = wy + wh;
+
+    const sk = ctx.createLinearGradient(0, wy, 0, hy);
+    sk.addColorStop(0, mix([3, 5, 12], [62, 74, 96], D));
+    sk.addColorStop(0.7, mix([9, 14, 30], [146, 140, 150], D));
+    sk.addColorStop(1, mix([30, 30, 46], [222, 186, 164], D));
+    ctx.fillStyle = sk; ctx.fillRect(wx, wy, ww, hy - wy + 1);
+    if (D < 1) {
+      ctx.fillStyle = '#e2e8ff';
+      for (const s of world.stars) {
+        ctx.globalAlpha = s.b * (1 - D) * (0.75 + 0.25 * Math.sin(clock * s.f + s.ph));
+        ctx.fillRect(wx + s.x * ww, wy + 4 + s.y * (hy - wy - 10), s.s, s.s);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    const gg = ctx.createLinearGradient(0, hy, 0, bottom);
+    gg.addColorStop(0, mix([24, 23, 34], [128, 124, 124], D));
+    gg.addColorStop(0.1, mix([9, 11, 20], [82, 88, 88], D));
+    gg.addColorStop(1, mix([2, 3, 6], [40, 46, 44], D));
+    ctx.fillStyle = gg; ctx.fillRect(wx, hy, ww, bottom - hy);
+
+    ctx.globalCompositeOperation = 'lighter';
+    const night = 1 - 0.5 * D;
+    const left = camX - RX, right = camX + RX;
+
+    for (const tn of world.towns) {
+      if (tn.size < 0.6) continue;
+      const iz = 1 / tn.zc;
+      const sc = KX * iz;
+      const x = cxs + (tn.cx - camX) * sc;
+      const rad = tn.rx * sc * 1.25 + 24;
+      if (x + rad < wx || x - rad > wx + ww) continue;
+      const yNear = hy + KY * iz * tn.fz, yFar = hy + KY * iz / tn.fz;
+      const y = (yNear + yFar) / 2;
+      const vr = (yNear - yFar) * 0.65 + 8;
+      const u = (iz - IZF) * IRANGE;
+      ctx.globalAlpha = Math.min(0.45, 0.13 * tn.size) * (1 - D) * (0.45 + 0.55 * u);
+      ctx.drawImage(SPR.haze, x - rad, y - vr, rad * 2, vr * 2);
+    }
+
+    ctx.lineWidth = 0.8; ctx.strokeStyle = '#ffa955';
+    for (const r of world.roads) {
+      if (r.maxX < left || r.minX > right) continue;
+      ctx.globalAlpha = (r.lit ? 0.14 : 0.045) * (1 - 0.8 * D);
+      ctx.beginPath();
+      for (let k = 0; k < 3; k++) {
+        const p = r.pts[k]; const iz = 1 / p.z;
+        const x = cxs + (p.gx - camX) * KX * iz, y = hy + KY * iz;
+        if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+    }
+    for (const r of world.roads) {
+      if (r.maxX < left || r.minX > right) continue;
+      const p = r.pts;
+      for (const car of r.cars) {
+        let a, b, k;
+        if (car.s < 0.5) { a = p[0]; b = p[1]; k = car.s * 2; } else { a = p[1]; b = p[2]; k = (car.s - 0.5) * 2; }
+        const gx = a.gx + (b.gx - a.gx) * k, z = a.z + (b.z - a.z) * k;
+        const iz = 1 / z;
+        const x = cxs + (gx - camX) * KX * iz;
+        if (x < wx || x > wx + ww) continue;
+        const y = hy + KY * iz; if (y > bottom) continue;
+        const u = (iz - IZF) * IRANGE;
+        const s = 0.6 + 1.3 * u;
+        ctx.globalAlpha = 0.75 * (0.4 + 0.6 * u);
+        ctx.fillStyle = car.sp > 0 ? '#fff3da' : '#ff5a44';
+        ctx.fillRect(x - s / 2, y - s / 2, s, s);
+      }
+    }
+
+    for (let c = 0; c < 3; c++) {
+      const arr = world.lights[c];
+      const glow = SPR.glow[c];
+      ctx.fillStyle = COL[c];
+      for (let i = lower(arr, left); i < arr.length; i++) {
+        const L = arr[i];
+        if (L.gx > right) break;
+        const iz = 1 / L.z;
+        const x = cxs + (L.gx - camX) * KX * iz;
+        if (x < wx - 6 || x > wx + ww + 6) continue;
+        const y = hy + KY * iz;
+        if (y > bottom + 6) continue;
+        const u = (iz - IZF) * IRANGE;
+        const off = D <= L.o ? 1 : Math.max(0, 1 - (D - L.o) * 8);
+        if (off <= 0) continue;
+        let a = L.b * (0.28 + 0.72 * u) * night * off;
+        if (L.tw > 0) a *= 1 - L.tw * (0.5 + 0.5 * Math.sin(clock * L.f + L.ph));
+        if (a < 0.015) continue;
+        const s = L.s * (0.5 + 1.6 * u);
+        ctx.globalAlpha = a > 1 ? 1 : a;
+        ctx.fillRect(x - s * 0.5, y - s * 0.5, s, s);
+        if (u > 0.33 && L.b > 0.55) {
+          const g = s * (2.5 + 3 * u);
+          ctx.globalAlpha = a * 0.28;
+          ctx.drawImage(glow, x - g, y - g, g * 2, g * 2);
+        }
+      }
+    }
+
+    for (const f of flares) {
+      if (f.fi !== flightIdx) continue;
+      const age = (tf - f.tc) / 1.2;
+      if (age < 0 || age >= 1) continue;
+      const iz = 1 / f.z;
+      const x = cxs + (f.gx - camX) * KX * iz, y = hy + KY * iz;
+      const u = (iz - IZF) * IRANGE;
+      const k = 1 - age;
+      const g = (5 + 18 * u) * (0.7 + 0.5 * age);
+      ctx.globalAlpha = k * k * 0.9;
+      ctx.drawImage(SPR.glow[f.c], x - g, y - g, g * 2, g * 2);
+      ctx.globalAlpha = k * k * 0.5;
+      ctx.fillStyle = '#fff1d6';
+      ctx.fillRect(cxs - 0.5, y - g * 0.6, 1, g * 1.2);
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+
+    const hz = ctx.createLinearGradient(0, hy - 18, 0, hy + 34);
+    hz.addColorStop(0, 'rgba(120,110,120,0)');
+    hz.addColorStop(0.45, mixA([60, 52, 72], [235, 205, 185], D, 0.2 + 0.2 * D));
+    hz.addColorStop(1, 'rgba(120,110,120,0)');
+    ctx.fillStyle = hz; ctx.fillRect(wx, hy - 18, ww, 52);
+
+    ctx.fillStyle = 'rgba(240,228,205,' + (0.07 * (1 - C)).toFixed(3) + ')';
+    ctx.fillRect(cxs - 0.5, hy + 4, 1, bottom - hy - 4);
+
+    if (C > 0) {
+      ctx.globalAlpha = Math.min(1, C * 1.5) * 0.5;
+      for (let i = 0; i < 8; i++) {
+        const sp = 0.05 + 0.02 * i;
+        const ph = (((i * 0.37 - clock * sp) % 1.5) + 1.5) % 1.5 - 0.25;
+        const x = wx + ww * ph, y = wy + wh * (0.1 + 0.11 * i);
+        const r = ww * (0.55 + 0.1 * (i % 3));
+        ctx.drawImage(SPR.cloud, x - r, y - r * 0.5, r * 2, r);
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(152,158,165,' + (C * 0.95).toFixed(3) + ')';
+      ctx.fillRect(wx, wy, ww, wh);
+    }
+
+    if (drops.length) {
+      ctx.strokeStyle = 'rgba(214,222,232,0.34)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const d of drops) {
+        const sp = Math.hypot(d.vx, d.vy);
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - d.vx / sp * d.l, d.y - d.vy / sp * d.l);
+      }
+      ctx.stroke();
+    }
+    if (beads.length) {
+      ctx.fillStyle = 'rgb(225,230,236)';
+      for (const b of beads) { ctx.globalAlpha = Math.max(0, b.a); ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.283); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+
+    const vg = ctx.createRadialGradient(cxs, wy + wh * 0.5, Math.min(ww, wh) * 0.3, cxs, wy + wh * 0.5, Math.max(ww, wh) * 0.72);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = vg; ctx.fillRect(wx, wy, ww, wh);
+    const rf = ctx.createLinearGradient(wx, wy, wx + ww, wy + wh);
+    rf.addColorStop(0, 'rgba(255,255,255,0)');
+    rf.addColorStop(0.28, 'rgba(255,255,255,0.035)');
+    rf.addColorStop(0.4, 'rgba(255,255,255,0)');
+    rf.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = rf; ctx.fillRect(wx, wy, ww, wh);
+  }
+
+  // ---------- main loop ----------
+  function frame(ms) {
+    let dt = last ? (ms - last) / 1000 : 0;
+    last = ms;
+    dt = clamp(dt, 0, 0.05);
+    clock += dt;
+    bob = Math.sin(clock * 0.63) * 0.7 + Math.sin(clock * 1.71 + 1) * 0.3;
+
+    tick();
+    let tf = 0;
+    if (state === 'flying' || state === 'ended') tf = now() - s0 - flightIdx * T;
+    camX = V * tf;
+
+    // with the lights fully out there is nothing to see, so don't spend battery painting it
+    if (!fullyDark()) {
+      const D = dawnAt(tf), R = rainAt(tf), C = cloudAt(tf);
+      for (const r of world.roads) {
+        for (const car of r.cars) {
+          car.s += car.sp * dt;
+          if (car.s > 1) car.s -= 1; else if (car.s < 0) car.s += 1;
+        }
+      }
+      updateRain(dt, R);
+      if (flares.length) flares = flares.filter(f => f.fi === flightIdx && tf - f.tc < 1.2);
+      draw(D, R, C, tf);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- controls ----------
+  document.querySelectorAll('.choices button').forEach(b => {
+    b.addEventListener('click', () => { if (state === 'idle') begin(parseInt(b.dataset.n, 10) || 1); });
+  });
+  document.querySelectorAll('.noise button').forEach(b => {
+    b.addEventListener('click', () => setNoise(parseInt(b.dataset.l, 10) || 0));
+  });
+  endEl.addEventListener('click', () => { if (state === 'ended') toStart(true); });
+  nightEl.addEventListener('click', () => { if (state === 'ended') toStart(true); });
+
+  // a tap on the window brings up the dim in-flight buttons for a few seconds
+  cv.addEventListener('click', () => { if (state === 'flying') showControls(); });
+  bNoise.addEventListener('click', () => { setNoise((noiseLevel + 1) % 3); showControls(); });
+  bDark.addEventListener('click', () => { if (state === 'flying') setDark(true, 20); });
+  bLand.addEventListener('click', () => { if (state === 'flying') toStart(false); });
+
+  // a tap on the dark: during the flight, look again for a while; after landing, back to the start
+  darkEl.addEventListener('click', () => {
+    if (state === 'ended') { toStart(true); return; }
+    if (state !== 'flying') { setDark(false, 0.8); return; }
+    setDark(false, 1.2);
+    peekTimer = setTimeout(() => { if (state === 'flying') setDark(true, 25); }, PEEK * 1000);
+  });
+
+  window.addEventListener('keydown', e => {
+    if (e.key === 'n' || e.key === 'N') {
+      setNoise((noiseLevel + 1) % 3);
+      if (state === 'flying') flashCaption('cabin noise: ' + NOISE[noiseLevel].name);
+    } else if (e.key === 'Escape') {
+      if (state === 'flying' || state === 'ended') toStart(false);
+    } else if ((e.key === 'Enter' || e.key === ' ') && state === 'ended') {
+      toStart(true);
+    }
+  });
+  window.addEventListener('resize', layout);
+
+  markNoise();
+  layout();
+  setInterval(tick, 100);
+  requestAnimationFrame(frame);
+
+  // lets the app open with no connection once it has been opened once
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  // a small handle for checking the page; it changes nothing by being here
+  window.__flyology = {
+    get state() { return state; }, get lightsOut() { return lightsOut; }, get awake() { return !!wake; },
+    get wantAwake() { return wantAwake; }, get card() { return flightIdx; },
+    skip(sec) { s0 -= sec; }
+  };
+})();
+</script>
+</body>
+</html>
